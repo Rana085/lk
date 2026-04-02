@@ -1,92 +1,64 @@
-import faker
-import fake_email
-import asyncio
-from aiohttp import *
-import json
+from faker import Faker
 import random
+import secrets
+import asyncio
+import aiohttp
+import json
 
+# Generate fake data
+fake = Faker()
+email = f"{fake.name}@{fake.domain}"
+password = secrets.token_alphanumeric(16)
+useragent = f"Mozilla/5.0 (Android; Chrome; 99.0; Mobile; OPPO A74; WxMDTS)"
 
-# Configuration (feel free to adjust these)
-EMAIL = "test456789@gmail.com"  # Replace with your desired email domain
-PASSWORD = "RandomPassword123!" # Change this for each account! Use pyotp for PIN
-OTP = "123456" # PIN from the OTP generator, it must match what you enter into Facebook
+# Function to generate a random IP address
+def get_random_ip():
+    return "".join([str((int)(random.getrandbits(8))) for _ in range(2)]) + "." \
+           "".join([str((int)(random.getrandbits(8))) for _ in range(2)]) + "." \
+           "".join([str((int)(random.getrandbits(8))) for _ in range(2)]) + "." \
+           "".join([str((int)(random.getrandbits(8))) for _ in range(2)])
 
-USER_AGENT_PREFIX = "AutoFacebookAccount/"
-NUMBER_OF_ACCOUNTS = 3  # Set how many accounts to create.
-ACCOUNT_TYPE = 'male' # or 'female', 'other'
+# Function to generate random device address
+def get_random_device_address():
+    return f"::FFFF:{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
 
+# Login data structure
+login_data = {
+    "email": email,
+    "password": password,
+    "device_id": secrets.token_urlsafe(16),
+    "device_type": "Android",
+    "timezone": fake.timezone(),
+    "locale": fake.languagecode()
+}
 
-class AutoAccountCreator:
-    def __init__(self):
-        self.fake = faker.Faker()
-        self.client_session = None
+# Function to create Facebook account with aiohttp post request
+async def create_account():
+    try:
+        # Create JSON data from login data
+        data = json.dumps(login_data)
 
-    async def create_account(self, account_number=1):
-        """Creates a single Facebook auto account."""
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": useragent
+        }
 
-        # Generate name and email
-        full_name = f"{self.fake.first_name()} {self.fake.last_name()}"
-        email = f"{self.fake.email().replace('@gmailcom','{}.com')}".format(account_number)  # Replaced gmail with gmailcom for a cleaner look
-        password = self.fake.password()
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://graph.facebook.com/stateboard/useraccounts", headers=headers, data=data.encode()) as response:
+                response_json = await response.json()
 
-        # Generate OTP PIN
-        otp = "123456" # Replace this with the actual OTP code you generate using pyotp or a similar method. This is just an example to make it work immediately!
-
-        print(f"\nAccount #{account_number} created: \nEmail: {email}\nPassword: {password}\nOTP: {otp}")
-
-        # Create aiohttp Session
-        try:
-            self.client_session = AIOHTTP().create()
-            await self.client_session.get('https://www.facebook.com/login.php')
-        except Exception as e:
-            print(f"Error initializing session: {e}")
-            return
-
-        # Prepare request data
-        data = json.dumps({
-            'email': email,
-            'password': password,
-            'device_id': f"{account_number}", # Use a random device ID for each account
-            'package': 'com.facebook.android',
-            'client_app': 'FacebookAndroid',
-            'version': "10.0",
-            'locale': "en\_US",
-            'device_model': "SM-G973U", # Replace with a random device model
-            'os_name': 'Android',
-            'os_version': "12.0",
-            'user_type': 8,  # New account type
-            'token': OTP,   # Use the generated OTP PIN (This is where you integrate the pyotp library)
-        })
-
-        try:
-            async with self.client_session.post(
-                url="https://www.facebook.com/login.php?locale=en_US&email=${EMAIL}&password=${PASSWORD}",
-                json=data,
-            ) as response:
-                if response.status == 201:
-                    print("Account Created Successfully")
+                # Check if account creation was successful
+                if response_json["result"]["id"]:
+                    print(f"Account created successfully! Email: {email}, Password: {password}")
+                    return True
                 else:
-                    print(f"Error creating account (Status code {response.status}): \n{await response.text()}")
+                    print(f"Account creation failed. Error: {response_json['message']}")
+                    return False
 
-        except Exception as e:
-            print(f"\nError during login request for Account #{account_number}: {e}")
+    except Exception as e:
+        print(f"An error occurred during account creation: {e}")
+        return False
 
-
-    async def run(self):
-        """Runs the account creation process."""
-        # Create multiple accounts in parallel
-        tasks = []
-        for i in range(1, NUMBER_OF_ACCOUNTS + 1):
-            task = asyncio.create_task(self.create_account(i))
-            tasks.append(task)
-
-        await asyncio.gather(*tasks) # Run all tasks simultaneously
-
-
-# Main Execution Block
+# Main function to run the script
 if __name__ == "__main__":
-    async def main():
-        creator = AutoAccountCreator()
-        await creator.run()
-    
-    asyncio.run(main())  # Start the asynchronous program
+    asyncio.run(create_account())
